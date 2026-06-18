@@ -45,6 +45,7 @@
       font-size: 1rem;
     }
 
+    /* Контейнер для 3D сцены по центру */
     #canvas-container {
       position: absolute;
       top: 0;
@@ -146,7 +147,7 @@
 
   <header>
     <h1>ВЫБЕРИ СВОЕГО ГЕРОЯ</h1>
-    <p>Добавляй карточки прямо в HTML, JS сам подгрузит 3D модели</p>
+    <p>Модели автоматически центрируются на сцене</p>
   </header>
 
   <div id="loader">Загрузка модели...</div>
@@ -158,8 +159,8 @@
       <h3>Homelander</h3>
     </div>
     
-    <div class="character-card" data-model="butcher.glb">
-      <h3>Butcher</h3>
+    <div class="character-card" data-model="darthvader.glb">
+      <h3>Darth Vader</h3>
     </div>
 
   </div>
@@ -172,11 +173,13 @@
     const container = document.getElementById('canvas-container');
     const loaderElement = document.getElementById('loader');
 
-    // 1. Инициализация Three.js
+    // 1. Инициализация сцены
     function init3D() {
       scene = new THREE.Scene();
+      
+      // Камера направлена четко в центр (0, 1.2, 0)
       camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
-      camera.position.set(0, 1.4, 3.2);
+      camera.position.set(0, 1.4, 3.0); 
 
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setSize(container.clientWidth, container.clientHeight);
@@ -185,7 +188,7 @@
       renderer.outputEncoding = THREE.sRGBEncoding;
       container.appendChild(renderer.domElement);
 
-      // Освещение
+      // Студийный свет со всех сторон, чтобы не было черных пятен
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
       scene.add(ambientLight);
 
@@ -193,14 +196,14 @@
       directionalLight.position.set(5, 10, 7);
       scene.add(directionalLight);
 
-      const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+      const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
       fillLight.position.set(-5, 2, -2);
       scene.add(fillLight);
 
       animate();
     }
 
-    // 2. Функция загрузки модели
+    // 2. Функция загрузки и жесткого центрирования модели
     function load3DModel(fileName) {
       loaderElement.style.display = 'block';
       loaderElement.innerText = 'Загрузка 3D модели...';
@@ -214,13 +217,17 @@
         (gltf) => {
           currentModel = gltf.scene;
 
-          // Центрируем модель
+          // Расчет математических границ модели для идеального выравнивания
           const box = new THREE.Box3().setFromObject(currentModel);
           const center = box.getCenter(new THREE.Vector3());
+          const size = box.getSize(new THREE.Vector3());
           
-          currentModel.position.x += (currentModel.position.x - center.x);
-          currentModel.position.y += (currentModel.position.y - box.min.y) - 0.9;
-          currentModel.position.z += (currentModel.position.z - center.z);
+          // Сбрасываем локальные координаты модели строго в центр сцены (0, 0, 0)
+          currentModel.position.x = -center.x;
+          currentModel.position.z = -center.z;
+          
+          // Ставим ноги персонажа ровно на "пол" сцены (чуть ниже центра видимости камеры)
+          currentModel.position.y = -box.min.y - 0.9;
 
           scene.add(currentModel);
           loaderElement.style.display = 'none';
@@ -238,43 +245,47 @@
       );
     }
 
-    // 3. Навешивание событий на карточки из HTML
+    // 3. Обработка кликов по интерфейсу
     function setupUI() {
       const cards = document.querySelectorAll('.character-card');
       
       cards.forEach(card => {
         card.addEventListener('click', () => {
-          // Убираем активный класс у всех и добавляем текущей
           cards.forEach(c => c.classList.remove('active'));
           card.classList.add('active');
           
-          // Берем имя файла из атрибута data-model
           const modelFile = card.getAttribute('data-model');
           load3DModel(modelFile);
         });
       });
 
-      // Сразу загружаем модель из первой активной карточки
+      // Грузим дефолтного персонажа (первого активного)
       const defaultActive = document.querySelector('.character-card.active');
       if (defaultActive) {
         load3DModel(defaultActive.getAttribute('data-model'));
       }
     }
 
+    // 4. Цикл рендеринга и вращения
     function animate() {
       requestAnimationFrame(animate);
+      
+      // Вращаем модель строго вокруг её выровненного центра
       if (currentModel) {
         currentModel.rotation.y += 0.005;
       }
+      
       renderer.render(scene, camera);
     }
 
+    // Сброс размеров при изменении окна
     window.addEventListener('resize', () => {
       camera.aspect = container.clientWidth / container.clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(container.clientWidth, container.clientHeight);
     });
 
+    // Кнопка отправки в бой
     document.getElementById('start-btn').addEventListener('click', () => {
       const activeCard = document.querySelector('.character-card.active h3');
       if (activeCard) {
@@ -282,7 +293,7 @@
       }
     });
 
-    // Запуск
+    // Старт системы
     init3D();
     setupUI();
   </script>
