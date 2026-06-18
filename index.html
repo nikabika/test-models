@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Выбор Персонажа</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      background-color: #000000;
+      color: #ffffff;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      padding: 40px 20px;
+    }
+
+    /* Заголовок */
+    header {
+      text-align: center;
+      z-index: 10;
+    }
+
+    header h1 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      letter-spacing: -0.05em;
+      margin-bottom: 8px;
+      background: linear-gradient(180deg, #ffffff 0%, #a3a3a3 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    header p {
+      color: #666666;
+      font-size: 1rem;
+    }
+
+    /* Контейнер для 3D сцены (на заднем плане) */
+    #canvas-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    /* Индикатор загрузки внутри 3D сцены */
+    #loader {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-Concentrate, -50%);
+      transform: translate(-50%, -50%);
+      color: #888;
+      font-size: 1.2rem;
+      z-index: 2;
+      pointer-events: none;
+      display: none;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 15px 30px;
+      border-radius: 20px;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* Слайдер с карточками персонажей */
+    .selection-zone {
+      width: 100%;
+      max-width: 1200px;
+      z-index: 10;
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      overflow-x: auto;
+      padding: 20px 10px;
+      scrollbar-width: none; /* Скрываем скроллбар в Firefox */
+    }
+
+    .selection-zone::-webkit-scrollbar {
+      display: none; /* Скрываем скроллбар в Chrome/Safari */
+    }
+
+    /* Карточка персонажа (Glassmorphism) */
+    .character-card {
+      min-width: 200px;
+      padding: 24px;
+      background: rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .character-card:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-8px);
+    }
+
+    .character-card.active {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.4);
+      box-shadow: 0 0 30px rgba(255, 255, 255, 0.05);
+    }
+
+    .character-card h3 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      text-transform: capitalize;
+      letter-spacing: -0.02em;
+    }
+
+    /* Кнопка "В бой" */
+    .action-btn {
+      z-index: 10;
+      background: #ffffff;
+      color: #000000;
+      border: none;
+      padding: 16px 48px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      border-radius: 30px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 20px rgba(255, 255, 255, 0.1);
+    }
+
+    .action-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 30px rgba(255, 255, 255, 0.25);
+    }
+    
+    .action-btn:active {
+      transform: scale(0.98);
+    }
+  </style>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+
+  <header>
+    <h1>ВЫБЕРИ СВОЕГО ГЕРОЯ</h1>
+    <p>Каждая модель подгружается динамически из папки</p>
+  </header>
+
+  <div id="loader">Загрузка модели...</div>
+  <div id="canvas-container"></div>
+
+  <div class="selection-zone" id="cards-container"></div>
+
+  <button class="action-btn" id="start-btn">ПОДТВЕРДИТЬ</button>
+
+  <script>
+    // --- СПИСОК ТВОИХ МОДЕЛЕЙ ---
+    // Просто добавляй сюда имена файлов из папки models/
+    const modelsList = [
+      'homelander.glb',
+      'butcher.glb'
+    ];
+
+    const modelsFolder = './models/';
+    let scene, camera, renderer, currentModel;
+    const container = document.getElementById('canvas-container');
+    const loaderElement = document.getElementById('loader');
+
+    // 1. Инициализация 3D сцены
+    function init3D() {
+      scene = new THREE.Scene();
+      
+      // Настройка камеры
+      camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+      camera.position.set(0, 1.6, 3.5); // Камера на уровне груди/лица персонажа
+
+      // Рендерер сглаживания и альфа-канала (прозрачный фон)
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      container.appendChild(renderer.domElement);
+
+      // Освещение (мягкий студийный свет)
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+      scene.add(ambientLight);
+
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      directionalLight.position.set(5, 10, 7);
+      scene.add(directionalLight);
+
+      const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+      fillLight.position.set(-5, 2, -2);
+      scene.add(fillLight);
+
+      // Запуск цикла анимации (вращение модели)
+      animate();
+    }
+
+    // 2. Функция загрузки конкретной модели
+    function loadCharacter(fileName) {
+      // Показываем лоадер
+      loaderElement.style.display = 'block';
+
+      // Если на сцене уже есть модель — удаляем её
+      if (currentModel) {
+        scene.remove(currentModel);
+      }
+
+      const loader = new THREE.GLTFLoader();
+      
+      loader.load(
+        modelsFolder + fileName,
+        (gltf) => {
+          currentModel = gltf.scene;
+
+          // Авто-центрирование и масштабирование модели под размер экрана
+          const box = new THREE.Box3().setFromObject(currentModel);
+          const size = box.getSize(new THREE.Vector3());
+          const center = box.getCenter(new THREE.Vector3());
+          
+          // Сбрасываем позицию в центр сцены, но приподнимаем ноги к полу
+          currentModel.position.x += (currentModel.position.x - center.x);
+          currentModel.position.y += (currentModel.position.y - box.min.y) - 0.8; // чуть опускаем вниз
+          currentModel.position.z += (currentModel.position.z - center.z);
+
+          scene.add(currentModel);
+          loaderElement.style.display = 'none'; // Прячем лоадер
+        },
+        // Прогресс загрузки (опционально)
+        (xhr) => {
+          if (xhr.total > 0) {
+            const percent = Math.round((xhr.loaded / xhr.total) * 100);
+            loaderElement.innerText = `Загрузка: ${percent}%`;
+          }
+        },
+        // Ошибка (если файл не найден или кривой)
+        (error) => {
+          console.error('Ошибка загрузки модели:', error);
+          loaderElement.innerText = 'Ошибка загрузки файла 💀';
+        }
+      );
+    }
+
+    // 3. Динамическая генерация карточек интерфейса
+    function generateUI() {
+      const cardsContainer = document.getElementById('cards-container');
+
+      modelsList.forEach((file, index) => {
+        // Убираем ".glb" из названия и убираем лишние знаки
+        const cleanName = file.replace('.glb', '').replace(/[-_]/g, ' ');
+
+        const card = document.createElement('div');
+        card.className = `character-card ${index === 0 ? 'active' : ''}`;
+        card.innerHTML = `<h3>${cleanName}</h3>`;
+
+        // Клик по карточке меняет персонажа
+        card.addEventListener('click', () => {
+          document.querySelectorAll('.character-card').forEach(c => c.classList.remove('active'));
+          card.classList.add('active');
+          loadCharacter(file);
+        });
+
+        cardsContainer.appendChild(card);
+      });
+
+      // По дефолту грузим первого персонажа из списка
+      if (modelsList.length > 0) {
+        loadCharacter(modelsList[0]);
+      }
+    }
+
+    // 4. Бесконечный цикл рендера (вращение персонажа)
+    function animate() {
+      requestAnimationFrame(animate);
+      
+      // Медленно крутим модель вокруг своей оси для демонстрации со всех сторон
+      if (currentModel) {
+        currentModel.rotation.y += 0.005;
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    // 5. Адаптивность под размеры окна браузера
+    window.addEventListener('resize', () => {
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+
+    // Кнопка подтверждения
+    document.getElementById('start-btn').addEventListener('click', () => {
+      const activeCard = document.querySelector('.character-card.active h3');
+      if (activeCard) {
+        alert(`Выбран персонаж: ${activeCard.innerText}. Дальше — сама игра! 😁`);
+      }
+    });
+
+    // Запуск всего при старте страницы
+    init3D();
+    generateUI();
+  </script>
+</body>
+</html>
