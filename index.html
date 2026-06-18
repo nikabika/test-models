@@ -145,10 +145,10 @@
 
   <header>
     <h1>ВЫБЕРИ СВОЕГО ГЕРОЯ</h1>
-    <p>Модели сканируются автоматически из папки на сервере</p>
+    <p>Карточки и 3D модели загружаются динамически</p>
   </header>
 
-  <div id="loader">Сканирование папки...</div>
+  <div id="loader">Загрузка списка героев...</div>
   <div id="canvas-container"></div>
   <div class="selection-zone" id="cards-container"></div>
   <button class="action-btn" id="start-btn">ПОДТВЕРДИТЬ</button>
@@ -159,7 +159,7 @@
     const container = document.getElementById('canvas-container');
     const loaderElement = document.getElementById('loader');
 
-    // 1. Инициализация 3D сцены
+    // 1. Инициализация 3D
     function init3D() {
       scene = new THREE.Scene();
       camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
@@ -186,52 +186,32 @@
       animate();
     }
 
-    // 2. АВТОМАТИЧЕСКОЕ ЧТЕНИЕ ПАПКИ С МОДЕЛЯМИ
-    async function scanModelsFolder() {
+    // 2. Чтение списка из файла list.json
+    async function loadModelsList() {
       try {
-        // Делаем запрос к самой папке. Сервер (GitHub/LiveServer) вернет HTML-страницу со списком файлов
-        const response = await fetch(modelsFolder);
-        const text = await response.text();
+        const response = await fetch(modelsFolder + 'list.json');
+        if (!response.ok) throw new Error('Не удалось прочесть list.json');
         
-        // Создаем виртуальный документ, чтобы распарсить ссылки на файлы
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(text, 'text/html');
-        const links = doc.querySelectorAll('a');
-        
-        const detectedModels = [];
-        
-        links.forEach(link => {
-          const href = link.getAttribute('href');
-          // Ищем любые файлы, заканчивающиеся на .glb
-          if (href && href.endsWith('.glb')) {
-            // Вытаскиваем чистое имя файла из ссылки
-            const fileName = href.split('/').pop();
-            if (!detectedModels.includes(fileName)) {
-              detectedModels.push(fileName);
-            }
-          }
-        });
-
-        // Если папка пуста или мы локально без сервера
-        if (detectedModels.length === 0) {
-          throw new Error("Файлы .glb не обнаружены или запуск идет не через сервер");
-        }
-
+        const detectedModels = await response.json();
         buildUI(detectedModels);
-
       } catch (error) {
-        console.warn("Авто-сканирование не удалось, включен аварийный режим.", error);
-        loaderElement.innerText = "Ошибка CORS! Нужен локальный сервер (Live Server в VS Code) или деплой на GitHub Pages 💀";
+        console.error(error);
+        loaderElement.innerText = "Ошибка! Убедись, что в папке models лежит файл list.json 💀";
       }
     }
 
-    // 3. Динамическая сборка карточек
+    // 3. Создание карточек интерфейса
     function buildUI(models) {
       const cardsContainer = document.getElementById('cards-container');
-      cardsContainer.innerHTML = ''; // очищаем на всякий случай
+      cardsContainer.innerHTML = ''; 
+
+      if (models.length === 0) {
+        loaderElement.innerText = "Папка с моделями пуста";
+        return;
+      }
 
       models.forEach((file, index) => {
-        // Магия очистки: убираем ".glb", заменяем дефисы и подчеркивания на пробелы
+        // Убираем расширение .glb и чистим текст для названия карточки
         const cleanName = file.replace('.glb', '').replace(/[-_]/g, ' ');
 
         const card = document.createElement('div');
@@ -247,11 +227,11 @@
         cardsContainer.appendChild(card);
       });
 
-      // Грузим первую найденную модель
+      // Загружаем самую первую модель из списка
       load3DModel(models[0]);
     }
 
-    // 4. Загрузка самой 3D модели
+    // 4. Рендеринг 3D модели
     function load3DModel(fileName) {
       loaderElement.style.display = 'block';
       loaderElement.innerText = 'Загрузка 3D модели...';
@@ -265,7 +245,7 @@
         (gltf) => {
           currentModel = gltf.scene;
 
-          // Центрирование модели, чтобы она не улетала под землю
+          // Подгоняем модель под центр экрана
           const box = new THREE.Box3().setFromObject(currentModel);
           const center = box.getCenter(new THREE.Vector3());
           
@@ -284,7 +264,7 @@
         },
         (error) => {
           console.error(error);
-          loaderElement.innerText = 'Ошибка чтения .glb 💀';
+          loaderElement.innerText = 'Ошибка чтения файла модели 💀';
         }
       );
     }
@@ -292,7 +272,7 @@
     function animate() {
       requestAnimationFrame(animate);
       if (currentModel) {
-        currentModel.rotation.y += 0.005; // Вращение персонажа
+        currentModel.rotation.y += 0.005; // Вращаем модель
       }
       renderer.render(scene, camera);
     }
@@ -310,9 +290,9 @@
       }
     });
 
-    // Старт
+    // Поехали!
     init3D();
-    scanModelsFolder();
+    loadModelsList();
   </script>
 </body>
 </html>
