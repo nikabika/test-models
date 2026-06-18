@@ -68,6 +68,7 @@
       border-radius: 20px;
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.1);
+      display: none;
     }
 
     .selection-zone {
@@ -145,12 +146,24 @@
 
   <header>
     <h1>ВЫБЕРИ СВОЕГО ГЕРОЯ</h1>
-    <p>Карточки и 3D модели загружаются динамически</p>
+    <p>Добавляй карточки прямо в HTML, JS сам подгрузит 3D модели</p>
   </header>
 
-  <div id="loader">Загрузка списка героев...</div>
+  <div id="loader">Загрузка модели...</div>
   <div id="canvas-container"></div>
-  <div class="selection-zone" id="cards-container"></div>
+
+  <div class="selection-zone" id="cards-container">
+    
+    <div class="character-card active" data-model="homelander.glb">
+      <h3>Homelander</h3>
+    </div>
+    
+    <div class="character-card" data-model="butcher.glb">
+      <h3>Butcher</h3>
+    </div>
+
+  </div>
+
   <button class="action-btn" id="start-btn">ПОДТВЕРДИТЬ</button>
 
   <script>
@@ -159,7 +172,7 @@
     const container = document.getElementById('canvas-container');
     const loaderElement = document.getElementById('loader');
 
-    // 1. Инициализация 3D
+    // 1. Инициализация Three.js
     function init3D() {
       scene = new THREE.Scene();
       camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
@@ -172,6 +185,7 @@
       renderer.outputEncoding = THREE.sRGBEncoding;
       container.appendChild(renderer.domElement);
 
+      // Освещение
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
       scene.add(ambientLight);
 
@@ -186,52 +200,7 @@
       animate();
     }
 
-    // 2. Чтение списка из файла list.json
-    async function loadModelsList() {
-      try {
-        const response = await fetch(modelsFolder + 'list.json');
-        if (!response.ok) throw new Error('Не удалось прочесть list.json');
-        
-        const detectedModels = await response.json();
-        buildUI(detectedModels);
-      } catch (error) {
-        console.error(error);
-        loaderElement.innerText = "Ошибка! Убедись, что в папке models лежит файл list.json 💀";
-      }
-    }
-
-    // 3. Создание карточек интерфейса
-    function buildUI(models) {
-      const cardsContainer = document.getElementById('cards-container');
-      cardsContainer.innerHTML = ''; 
-
-      if (models.length === 0) {
-        loaderElement.innerText = "Папка с моделями пуста";
-        return;
-      }
-
-      models.forEach((file, index) => {
-        // Убираем расширение .glb и чистим текст для названия карточки
-        const cleanName = file.replace('.glb', '').replace(/[-_]/g, ' ');
-
-        const card = document.createElement('div');
-        card.className = `character-card ${index === 0 ? 'active' : ''}`;
-        card.innerHTML = `<h3>${cleanName}</h3>`;
-
-        card.addEventListener('click', () => {
-          document.querySelectorAll('.character-card').forEach(c => c.classList.remove('active'));
-          card.classList.add('active');
-          load3DModel(file);
-        });
-
-        cardsContainer.appendChild(card);
-      });
-
-      // Загружаем самую первую модель из списка
-      load3DModel(models[0]);
-    }
-
-    // 4. Рендеринг 3D модели
+    // 2. Функция загрузки модели
     function load3DModel(fileName) {
       loaderElement.style.display = 'block';
       loaderElement.innerText = 'Загрузка 3D модели...';
@@ -245,7 +214,7 @@
         (gltf) => {
           currentModel = gltf.scene;
 
-          // Подгоняем модель под центр экрана
+          // Центрируем модель
           const box = new THREE.Box3().setFromObject(currentModel);
           const center = box.getCenter(new THREE.Vector3());
           
@@ -269,10 +238,33 @@
       );
     }
 
+    // 3. Навешивание событий на карточки из HTML
+    function setupUI() {
+      const cards = document.querySelectorAll('.character-card');
+      
+      cards.forEach(card => {
+        card.addEventListener('click', () => {
+          // Убираем активный класс у всех и добавляем текущей
+          cards.forEach(c => c.classList.remove('active'));
+          card.classList.add('active');
+          
+          // Берем имя файла из атрибута data-model
+          const modelFile = card.getAttribute('data-model');
+          load3DModel(modelFile);
+        });
+      });
+
+      // Сразу загружаем модель из первой активной карточки
+      const defaultActive = document.querySelector('.character-card.active');
+      if (defaultActive) {
+        load3DModel(defaultActive.getAttribute('data-model'));
+      }
+    }
+
     function animate() {
       requestAnimationFrame(animate);
       if (currentModel) {
-        currentModel.rotation.y += 0.005; // Вращаем модель
+        currentModel.rotation.y += 0.005;
       }
       renderer.render(scene, camera);
     }
@@ -290,9 +282,9 @@
       }
     });
 
-    // Поехали!
+    // Запуск
     init3D();
-    loadModelsList();
+    setupUI();
   </script>
 </body>
 </html>
